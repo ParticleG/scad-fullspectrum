@@ -86,13 +86,27 @@ Spool sets ship with the tool, so no config file is needed to start:
 | `pla-cmyg` | cyan, magenta, yellow, grey | `pigment` |
 | `pla-rybw` | red, yellow, blue, white | `pigment` |
 
-Colours are idealised placeholders: measure your own spools and override them.
-A config file (and the command line flags) override the preset, and `-c` also
-accepts a preset name, so these are equivalent:
+Colours are idealised placeholders: measure your own spools and replace them.
+
+**Overriding a preset.** Precedence is preset < config file < explicit flags, and
+a config file replaces the keys it mentions: `base_filaments` is a list, so a
+file that carries its own spools *replaces the preset's spools and slot mapping*,
+while a key the file omits stays from the preset, and `mix` merges key by key.
+To keep a preset's spools and only change the model, use the flag or a minimal
+file:
 
 ```
-./scad2fs3mf part.scad -o part.3mf --preset pla-cmyw -c my-spools.json
-./scad2fs3mf part.scad -o part.3mf -c pla-cmyw
+./scad2fs3mf part.scad -o part.3mf --preset pla-cmyk --mix-model average
+echo '{"mix": {"model": "average"}}' > model-only.json
+./scad2fs3mf part.scad -o part.3mf --preset pla-cmyk -c model-only.json
+```
+
+Giving the spools from a file (or `-c` with a preset name instead of `--preset`)
+is equally valid - just be aware the file's four entries win:
+
+```
+./scad2fs3mf part.scad -o part.3mf --preset pla-cmyk -c my-spools.json
+./scad2fs3mf part.scad -o part.3mf -c pla-rybw
 ```
 
 `python3 -m scad_fullspectrum --print-example-config` prints the skeleton, and
