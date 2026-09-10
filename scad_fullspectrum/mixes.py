@@ -22,7 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Sequence
 
-from .color import RGB, blend_rgb, delta_e_2000, grade, rgb_to_lab
+from .color import RGB, MIX_MODELS, delta_e_2000, grade, mix_model, rgb_to_lab
 
 __all__ = [
     "RecipeKey",
@@ -140,12 +140,88 @@ class MixPlan:
         return self.assignments[rgb].extruder
 
 
+class _Candidates:
+    """Every recipe the spool set can reach on the grid, with its blend.
+
+    Recipes and blends do not depend on the target colour, so one instance is
+    reused for every colour of a model - which matters because the pigment model
+    costs far more per evaluation than a plain average.
+    """
+
+    def __init__(self, bases: Sequence[RGB], components: int, step: int, model: str = "average") -> None:
+        if not bases:
+            raise ValueError("at least one base filament is required")
+        self.bases = list(bases)
+        self.blend = mix_model(model)
+        self.singles: list[tuple[int, RGB]] = [(index + 1, rgb) for index, rgb in enumerate(bases)]
+        self.mixes: list[tuple[Recipe, RGB]] = []
+        self.by_recipe: dict[RecipeKey, RGB] = {}
+        self._enumerate(components, step)
+
+    def _add(self, slots: tuple[int, ...], percents: tuple[int, ...]) -> None:
+        recipe = Recipe(slots, percents)
+        blend = self.blend([(self.bases[slot - 1], float(pct)) for slot, pct in zip(slots, percents)])
+        self.mixes.append((recipe, blend))
+        self.by_recipe.setdefault(recipe.key(), blend)
+
+    def blend_of(self, recipe: Recipe) -> RGB:
+        """The blend of a recipe, reusing the candidate table when possible."""
+
+        cached = self.by_recipe.get(recipe.key())
+        if cached is not None:
+            return cached
+        return self.blend([(self.bases[slot - 1], float(pct)) for slot, pct in zip(recipe.slots, recipe.percents)])
+
+    def _enumerate(self, components: int, step: int) -> None:
+        count = len(self.bases)
+        for i in range(count):
+            for j in range(i + 1, count):
+                for pct_b in range(step, 100, step):
+                    self._add((i + 1, j + 1), (100 - pct_b, pct_b))
+        if components >= 3:
+            for i in range(count):
+                for j in range(i + 1, count):
+                    for k in range(j + 1, count):
+                        for pct_a in range(step, 100 - 2 * step + 1, step):
+                            for pct_b in range(step, 100 - pct_a - step + 1, step):
+                                self._add((i + 1, j + 1, k + 1), (pct_a, pct_b, 100 - pct_a - pct_b))
+        if components >= 4:
+            for pct_a in range(step, 100 - 3 * step + 1, step):
+                for pct_b in range(step, 100 - pct_a - 2 * step + 1, step):
+                    for pct_c in range(step, 100 - pct_a - pct_b - step + 1, step):
+                        self._add((1, 2, 3, 4), (pct_a, pct_b, pct_c, 100 - pct_a - pct_b - pct_c))
+
+    def best(self, target: RGB, simplicity_slack: float = 1.0) -> Suggestion:
+        """Closest reachable colour, preferring simple recipes among near-ties."""
+
+        target_lab = rgb_to_lab(target)
+        ranked: list[Suggestion] = [
+            Suggestion(target, rgb, delta_e_2000(target_lab, rgb_to_lab(rgb)), slot=slot)
+            for slot, rgb in self.singles
+        ]
+        ranked.extend(
+            Suggestion(target, blend, delta_e_2000(target_lab, rgb_to_lab(blend)), recipe=recipe)
+            for recipe, blend in self.mixes
+        )
+        ranked.sort(key=lambda item: item.delta_e)
+        best = ranked[0]
+        for candidate in ranked:
+            if candidate.delta_e > best.delta_e + simplicity_slack:
+                break
+            complexity = 1 if candidate.recipe is None else len(candidate.recipe.slots)
+            best_complexity = 1 if best.recipe is None else len(best.recipe.slots)
+            if complexity < best_complexity:
+                best = candidate
+        return best
+
+
 def solve(
     target: RGB,
     bases: Sequence[RGB],
     components: int = 2,
     step: int = 5,
     simplicity_slack: float = 1.0,
+    model: str = "average",
 ) -> Suggestion:
     """Find the recipe whose blend is perceptually closest to ``target``.
 
@@ -154,86 +230,10 @@ def solve(
     candidate count.  When several recipes are within ``simplicity_slack`` ΔE of
     the best one, the simplest (fewest components, then fewest tool changes)
     wins, because fewer components means less flushing and faster printing.
+    ``model`` selects the blend model (see :data:`scad_fullspectrum.color.MIX_MODELS`).
     """
 
-    target_lab = rgb_to_lab(target)
-    candidates: list[Suggestion] = []
-
-    for index, base in enumerate(bases):
-        candidates.append(
-            Suggestion(target, base, delta_e_2000(target_lab, rgb_to_lab(base)), slot=index + 1)
-        )
-
-    count = len(bases)
-    pair_grid = [pct for pct in range(step, 100, step)]
-    for i in range(count):
-        for j in range(i + 1, count):
-            for pct_b in pair_grid:
-                blend = blend_rgb([(bases[i], 100.0 - pct_b), (bases[j], float(pct_b))])
-                candidates.append(
-                    Suggestion(
-                        target,
-                        blend,
-                        delta_e_2000(target_lab, rgb_to_lab(blend)),
-                        Recipe((i + 1, j + 1), (100 - pct_b, pct_b)),
-                    )
-                )
-
-    if components >= 3:
-        for i in range(count):
-            for j in range(i + 1, count):
-                for k in range(j + 1, count):
-                    for pct_a in range(step, 100 - 2 * step + 1, step):
-                        for pct_b in range(step, 100 - pct_a - step + 1, step):
-                            pct_c = 100 - pct_a - pct_b
-                            blend = blend_rgb(
-                                [
-                                    (bases[i], float(pct_a)),
-                                    (bases[j], float(pct_b)),
-                                    (bases[k], float(pct_c)),
-                                ]
-                            )
-                            candidates.append(
-                                Suggestion(
-                                    target,
-                                    blend,
-                                    delta_e_2000(target_lab, rgb_to_lab(blend)),
-                                    Recipe((i + 1, j + 1, k + 1), (pct_a, pct_b, pct_c)),
-                                )
-                            )
-
-    if components >= 4:
-        for pct_a in range(step, 100 - 3 * step + 1, step):
-            for pct_b in range(step, 100 - pct_a - 2 * step + 1, step):
-                for pct_c in range(step, 100 - pct_a - pct_b - step + 1, step):
-                    pct_d = 100 - pct_a - pct_b - pct_c
-                    blend = blend_rgb(
-                        [
-                            (bases[0], float(pct_a)),
-                            (bases[1], float(pct_b)),
-                            (bases[2], float(pct_c)),
-                            (bases[3], float(pct_d)),
-                        ]
-                    )
-                    candidates.append(
-                        Suggestion(
-                            target,
-                            blend,
-                            delta_e_2000(target_lab, rgb_to_lab(blend)),
-                            Recipe((1, 2, 3, 4), (pct_a, pct_b, pct_c, pct_d)),
-                        )
-                    )
-
-    candidates.sort(key=lambda item: item.delta_e)
-    best = candidates[0]
-    for candidate in candidates:
-        if candidate.delta_e > best.delta_e + simplicity_slack:
-            break
-        complexity = 1 if candidate.recipe is None else len(candidate.recipe.slots)
-        best_complexity = 1 if best.recipe is None else len(best.recipe.slots)
-        if complexity < best_complexity:
-            best = candidate
-    return best
+    return _Candidates(bases, components, step, model).best(target, simplicity_slack)
 
 
 def plan(
@@ -243,6 +243,7 @@ def plan(
     step: int = 5,
     pure_threshold: float = 1.0,
     max_mixes: int | None = None,
+    model: str = "average",
 ) -> MixPlan:
     """Assign every target colour to a physical filament or a mixed row.
 
@@ -252,12 +253,12 @@ def plan(
     perceptually closest.
     """
 
-    if not bases:
-        raise ValueError("at least one base filament is required")
+    candidates = _Candidates(bases, components, step, model)
+    blend = candidates.blend
 
     suggestions: dict[tuple[int, int, int], Suggestion] = {}
     for target in targets:
-        suggestion = solve(target, bases, components=components, step=step)
+        suggestion = candidates.best(target)
         if suggestion.recipe is not None:
             # A spool that already matches this colour closely enough wins over a
             # blend: it saves a virtual filament and the tool changes it costs.
@@ -280,7 +281,7 @@ def plan(
 
     merges: dict[RecipeKey, RecipeKey] = {}
     if max_mixes is not None and len(recipes) > max_mixes:
-        merges = _collapse(recipes, bases, max_mixes)
+        merges = _collapse(recipes, candidates.blend_of, max_mixes)
         recipes = {key: recipe for key, recipe in recipes.items() if key not in merges}
 
     ordered = sorted(recipes.values(), key=lambda recipe: (len(recipe.slots), recipe.slots, recipe.percents))
@@ -304,7 +305,7 @@ def plan(
             )
             continue
         recipe = recipes[_resolve_key(suggestion.recipe.key(), merges)]
-        blend = _recipe_blend(recipe, bases)
+        blend = candidates.blend_of(recipe)
         assignments[target] = Assignment(
             target=target,
             extruder=extruder_of_recipe[recipe.key()],
@@ -328,7 +329,7 @@ def _resolve_key(key: RecipeKey, merges: dict[RecipeKey, RecipeKey]) -> RecipeKe
 
 def _collapse(
     recipes: dict[RecipeKey, Recipe],
-    bases: Sequence[RGB],
+    blend_of,
     max_mixes: int,
 ) -> dict[RecipeKey, RecipeKey]:
     """Merge the perceptually closest recipes until ``max_mixes`` remain.
@@ -341,7 +342,7 @@ def _collapse(
     merges: dict[RecipeKey, RecipeKey] = {}
     while len(working) > max_mixes:
         keys = list(working)
-        blends = {key: _recipe_blend(working[key], bases) for key in keys}
+        blends = {key: blend_of(working[key]) for key in keys}
         best_pair: tuple[float, RecipeKey, RecipeKey] | None = None
         for i, key_a in enumerate(keys):
             for key_b in keys[i + 1 :]:
@@ -354,10 +355,6 @@ def _collapse(
         working.pop(drop)
         merges[drop] = keep
     return merges
-
-
-def _recipe_blend(recipe: Recipe, bases: Sequence[RGB]) -> RGB:
-    return blend_rgb([(bases[slot - 1], float(pct)) for slot, pct in zip(recipe.slots, recipe.percents)])
 
 
 def describe(plan: MixPlan, bases: Sequence[RGB]) -> list[dict[str, object]]:

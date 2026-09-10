@@ -1,30 +1,60 @@
-"""Colour helpers: hex parsing, the FullSpectrum blend model and CIEDE2000.
+"""Colour helpers: hex parsing, blend models and CIEDE2000.
 
-The blend model is the sRGB-space weighted average.  That is the model the
-FullSpectrum fork uses to preview a mixed filament (verified externally against
-its own "Mix Effect" swatches), and it is also the model the physical result
-approximates when thin layers of two filaments alternate below the eye's
-resolving power.  It is a heuristic: real printed colour also depends on
-filament opacity (TD), temperature and speed.  ``delta_e_2000`` is used to rank
-recipes perceptually rather than in raw RGB distance.
+Three models answer "what colour does this recipe produce?" (see ``MIX_MODELS``):
+
+* ``average`` - weighted average in sRGB space; a cheap stand-in for opaque
+  filaments.
+* ``pigment`` - the degree-4 pigment polynomial the slicers use to draw their
+  mix preview, so predictions can be compared against what the GUI shows.
+* ``transmission`` - experimental, uncalibrated heuristic for translucent
+  filament; see :func:`blend_transmission` for what it assumes and why its ΔE
+  must not be read as printed accuracy.
+
+All of them are models: real printed colour also depends on filament opacity
+(TD), layer height, temperature, speed, the substrate and the viewing light.
+``delta_e_2000`` ranks recipes perceptually rather than in raw RGB distance.
 """
 
 from __future__ import annotations
 
+import functools
 import math
+
+from . import _pigment_model
 
 __all__ = [
     "RGB",
     "hex_to_rgb",
     "rgb_to_hex",
+    "srgb_to_linear",
+    "linear_to_srgb",
     "blend_rgb",
     "blend_hex",
+    "blend_pigment",
+    "blend_transmission",
+    "mix_model",
+    "MIX_MODELS",
     "rgb_to_lab",
     "delta_e_2000",
     "grade",
 ]
 
 RGB = tuple[int, int, int]
+
+#: Blend models, all taking ``[(rgb, weight), ...]`` and returning an ``RGB``.
+#:
+#: * ``average``      - weighted average in sRGB space (opaque filaments, fast).
+#: * ``pigment``      - the degree-4 pigment polynomial the slicers use for their
+#:                      mix preview (matches the swatch shown in the GUI).
+#: * ``transmission`` - **experimental, uncalibrated heuristic** for translucent
+#:                      filaments: weighted geometric mean in linear light, with
+#:                      no reference thickness, no measured absorption data and
+#:                      no substrate/illumination model. See
+#:                      :func:`blend_transmission` before trusting a number.
+MIX_MODELS = ("average", "pigment", "transmission")
+
+#: Models whose output is a rough guess that must be validated by printing.
+EXPERIMENTAL_MODELS = ("transmission",)
 
 
 def hex_to_rgb(text: str) -> RGB:
@@ -42,6 +72,18 @@ def rgb_to_hex(rgb: RGB) -> str:
     return "#{:02X}{:02X}{:02X}".format(*(max(0, min(255, int(round(c)))) for c in rgb))
 
 
+def srgb_to_linear(value: float) -> float:
+    """sRGB 0..1 to linear light."""
+
+    return value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
+
+
+def linear_to_srgb(value: float) -> float:
+    """Linear light to sRGB 0..1."""
+
+    return 12.92 * value if value <= 0.0031308 else 1.055 * value ** (1.0 / 2.4) - 0.055
+
+
 def blend_rgb(colors: list[tuple[RGB, float]]) -> RGB:
     """Weighted average in sRGB space; weights are normalised."""
 
@@ -55,18 +97,126 @@ def blend_rgb(colors: list[tuple[RGB, float]]) -> RGB:
     return tuple(int(round(channel)) for channel in out)  # type: ignore[return-value]
 
 
+@functools.lru_cache(maxsize=1024)
+def _pigment_pair_terms(a: RGB, b: RGB) -> tuple[tuple[float, float, float], ...]:
+    """Group the polynomial terms of one colour pair by their power of ``t``.
+
+    The full evaluation is ``INTERCEPT + sum_k t**k * terms[k]``, so a pair costs
+    one table build and 15 multiply-adds per ratio afterwards.
+    """
+
+    terms = [[0.0, 0.0, 0.0] for _ in range(5)]
+    channels = a + b
+    for powers, coefficient in zip(_pigment_model.POWERS, _pigment_model.COEF):
+        monomial = 1.0
+        for index, exponent in enumerate(powers[:6]):
+            if exponent:
+                monomial *= channels[index] ** exponent
+        row = terms[powers[6]]
+        for channel in range(3):
+            row[channel] += monomial * coefficient[channel]
+    return tuple(tuple(row) for row in terms)  # type: ignore[return-value]
+
+
+def _pigment_pair(a: RGB, b: RGB, t: float) -> RGB:
+    """One step of the slicer's pigment mixer (matches ``filament_mixer::lerp``)."""
+
+    if t <= 0.0:
+        return a
+    if t >= 1.0:
+        return b
+    terms = _pigment_pair_terms(a, b)
+    out: list[int] = []
+    for channel in range(3):
+        value = _pigment_model.INTERCEPT[channel]
+        power = 1.0
+        for k in range(5):
+            value += terms[k][channel] * power
+            power *= t
+        out.append(max(0, min(255, int(value))))
+    return (out[0], out[1], out[2])
+
+
+def blend_pigment(colors: list[tuple[RGB, float]]) -> RGB:
+    """The slicers' mix preview: pairwise pigment polynomial, weighted in order."""
+
+    components = [(rgb, float(weight)) for rgb, weight in colors if weight > 0]
+    if not components:
+        raise ValueError("blend needs at least one positive weight")
+    current, accumulated = components[0][0], components[0][1]
+    for rgb, weight in components[1:]:
+        total = accumulated + weight
+        current = _pigment_pair(current, rgb, weight / total)
+        accumulated = total
+    return current
+
+
+def blend_transmission(colors: list[tuple[RGB, float]]) -> RGB:
+    """**Experimental heuristic** for translucent filaments - not a prediction.
+
+    Translucent layers filter light instead of covering it, so the physical
+    behaviour is multiplicative.  This function assumes the simplest possible
+    version of that: the entered hex values are treated as transmittances, and
+    the per-channel result is their weighted geometric mean in linear light.
+    That is enough to make the *direction* of the effect visible (magenta +
+    yellow layers tend towards red instead of pink), but it is not calibrated:
+
+    * the input hex values are the colours of the filament *as displayed*, not
+      measured transmittance spectra, and nothing knows the layer thickness the
+      colour was measured at;
+    * a zero channel is floored at ``1e-6``, so "fully transmitting" channels
+      darken instead of staying open - an artefact of the implementation;
+    * the substrate, the number of layers, the viewing light, layer interfaces
+      and purging are all absent from the model.
+
+    Its ΔE numbers therefore only describe this formula.  They become physically
+    meaningful only after the inputs are measured (patch prints of each spool at
+    a fixed thickness) and the predictions have been checked against printed
+    mixture swatches.  Prefer printed swatches, and treat the tool output as a
+    search heuristic.
+    """
+
+    total = sum(weight for _, weight in colors)
+    if total <= 0:
+        raise ValueError("blend needs at least one positive weight")
+    out = [0.0, 0.0, 0.0]
+    for rgb, weight in colors:
+        share = weight / total
+        if share == 0:
+            continue
+        for channel in range(3):
+            out[channel] += share * math.log(max(srgb_to_linear(rgb[channel] / 255.0), 1e-6))
+    return tuple(  # type: ignore[return-value]
+        max(0, min(255, int(round(linear_to_srgb(math.exp(value)) * 255.0)))) for value in out
+    )
+
+
+def mix_model(name: str):
+    """Look up a blend model by name."""
+
+    try:
+        return _MIX_MODEL_TABLE[name]
+    except KeyError:
+        raise ValueError(f"unknown mix model {name!r}, expected one of {MIX_MODELS}") from None
+
+
+_MIX_MODEL_TABLE = {
+    "average": blend_rgb,
+    "pigment": blend_pigment,
+    "transmission": blend_transmission,
+}
+
+
 def blend_hex(colors: list[tuple[RGB, float]]) -> str:
+    """Weighted-average blend as a hex string (kept for callers of the average model)."""
+
     return rgb_to_hex(blend_rgb(colors))
 
 
 def rgb_to_lab(rgb: RGB) -> tuple[float, float, float]:
     """sRGB (D65) to CIELAB."""
 
-    def linearize(channel: int) -> float:
-        value = channel / 255.0
-        return value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
-
-    r, g, b = (linearize(channel) for channel in rgb)
+    r, g, b = (srgb_to_linear(channel / 255.0) for channel in rgb)
     x = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047
     y = 0.2126 * r + 0.7152 * g + 0.0722 * b
     z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883
