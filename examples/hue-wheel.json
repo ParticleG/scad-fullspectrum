@@ -1,0 +1,11 @@
+{
+  "base_filaments": [
+    { "slot": 1, "color": "#FF00FF", "name": "Magenta" },
+    { "slot": 2, "color": "#00FFFF", "name": "Cyan" },
+    { "slot": 3, "color": "#808080", "name": "Grey" },
+    { "slot": 4, "color": "#FFFF00", "name": "Yellow" }
+  ],
+  "uncolored": null,
+  "mix": { "components": 2, "step": 5, "pure_threshold": 1.0, "max_mixes": null },
+  "printer": { "bed": [270.0, 270.0] }
+}
