@@ -75,16 +75,24 @@ Spool sets ship with the tool, so no config file is needed to start:
 
 ```
 ./scad2fs3mf --list-presets
-./scad2fs3mf part.scad -o part.3mf --preset translucent-cmyg
+./scad2fs3mf part.scad -o part.3mf --preset translucent-cmyn
 ```
 
-| preset | spools (slot 1-4) | model |
-| --- | --- | --- |
-| `translucent-cmyg` | translucent cyan, magenta, yellow, grey | `transmission` (experimental) |
-| `pla-cmyk` | cyan, magenta, yellow, black | `pigment` |
-| `pla-cmyw` | cyan, magenta, yellow, white | `pigment` |
-| `pla-cmyg` | cyan, magenta, yellow, grey | `pigment` |
-| `pla-rybw` | red, yellow, blue, white | `pigment` |
+| preset | slot codes (1-4) | spools | model |
+| --- | --- | --- | --- |
+| `translucent-cmyn` | C M Y N | translucent cyan, magenta, yellow, neutral grey | `transmission` (experimental) |
+| `pla-cmyk` | C M Y K | cyan, magenta, yellow, black | `pigment` |
+| `pla-cmyw` | C M Y W | cyan, magenta, yellow, white | `pigment` |
+| `pla-cmyn` | C M Y N | cyan, magenta, yellow, neutral grey | `pigment` |
+| `pla-rybw` | R Y B W | red, yellow, blue, white | `pigment` |
+
+A preset is named `<material>-<codes>`, the codes being the slot letters joined
+in slot order: `pla-cmyk`, `pla-cmyw`, `pla-cmyn`, `pla-rybw`. The letters are
+`C` cyan, `M` magenta, `Y` yellow, `K` black, `W` white, `R` red, `B` blue,
+`G` **green** and `N` the **neutral** grey - so a six- or eight-spool set that
+contains both green and grey cannot be misread, and a longer set simply joins
+more letters. Only those letters are codes; anything else (a "natural" spool,
+say) is spelled out. `presets.validate()` enforces the spelling.
 
 Colours are idealised placeholders: measure your own spools and replace them.
 
@@ -108,6 +116,10 @@ is equally valid - just be aware the file's four entries win:
 ./scad2fs3mf part.scad -o part.3mf --preset pla-cmyk -c my-spools.json
 ./scad2fs3mf part.scad -o part.3mf -c pla-rybw
 ```
+
+Sets with more than four spools are not shipped yet: the planner already accepts
+*N* contiguous slots, but the bundled template carries four-slot arrays, so such
+a project needs a matching settings template exported from the slicer.
 
 `python3 -m scad_fullspectrum --print-example-config` prints the skeleton, and
 `--help` lists the flags that override the config (`--components`, `--max-mixes`,
@@ -173,7 +185,7 @@ against a model whose behaviour has an external reference.
 Reproduce these with the shipped example:
 
 ```
-./tools/bench_mixes.py examples/hue-wheel.scad --preset translucent-cmyg \
+./tools/bench_mixes.py examples/hue-wheel.scad --preset translucent-cmyn \
     --models -D segments=60
 ```
 

@@ -17,6 +17,7 @@ Core modules live in `scad_fullspectrum/`:
 Preserve these contracts:
 
 - CSG splitting is boolean-aware: retain difference cutters and intersection bounds; keep `hull()`/`minkowski()` atomic with inherited/first-colour attribution. Inner colour scopes win, alpha is ignored, and `%` background geometry is excluded.
+- The reserved single-letter slot codes are `SLOT_CODES`; `G` is **green** and `N` is the neutral grey (`pla-cmyn`), so six/eight-spool sets stay unambiguous. Only those letters are codes; other spools are spelled out.
 - Physical slots are contiguous and 1-based. With `N` spools, the first virtual extruder is `N + 1`. `Recipe.encode()` is a slicer wire format: pair percentages describe the **second** slot; preserve custom/enabled flags and stable row IDs.
 - After `max_mixes` collapse, reported blend/Delta E must describe the final assigned recipe, not the pre-merge suggestion.
 - The writer replaces only `filament_colour`, existing `filament_multi_colors`, and `mixed_filament_definitions`; preserve all other supplied settings.
@@ -48,7 +49,7 @@ python3 -m unittest discover -s tests -p 'test_mixes.py' -v
 
 # Optional accuracy sweep; substantially more work than the unit suite.
 python3 tools/bench_mixes.py examples/hue-wheel.scad \
-  --preset translucent-cmyg --models -D segments=60
+  --preset translucent-cmyn --models -D segments=60
 ```
 
 Use unused output paths. `--keep-temp DIR` retains intermediate CSG/STL files; `-v` exposes OpenSCAD output. There is no separate package build/install workflow or configured lint, formatter, type-check or CI command; do not invent one.

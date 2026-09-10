@@ -16,7 +16,7 @@ from scad_fullspectrum.cli import _resolve_config, _base_colors  # noqa: E402
 from scad_fullspectrum.color import MIX_MODELS, hex_to_rgb  # noqa: E402
 from scad_fullspectrum.pipeline import BuildOptions, build  # noqa: E402
 
-EXPECTED = {"translucent-cmyg", "pla-cmyk", "pla-cmyw", "pla-cmyg", "pla-rybw"}
+EXPECTED = {"translucent-cmyn", "pla-cmyk", "pla-cmyw", "pla-cmyn", "pla-rybw"}
 
 
 class RegistryTests(unittest.TestCase):
@@ -41,12 +41,12 @@ class RegistryTests(unittest.TestCase):
                 self.assertTrue(names)
 
     def test_translucent_preset_uses_the_experimental_model(self) -> None:
-        config = presets.get("translucent-cmyg")
+        config = presets.get("translucent-cmyn")
         self.assertEqual(config["mix"]["model"], "transmission")
         self.assertIn("experimental", config["note"].lower())
 
     def test_opaque_presets_use_the_slicer_model(self) -> None:
-        for name in ("pla-cmyk", "pla-cmyw", "pla-cmyg", "pla-rybw"):
+        for name in ("pla-cmyk", "pla-cmyw", "pla-cmyn", "pla-rybw"):
             self.assertEqual(presets.get(name)["mix"]["model"], "pigment")
 
     def test_get_returns_an_isolated_copy(self) -> None:
@@ -61,6 +61,41 @@ class RegistryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             presets.get("pla-nope")
         self.assertFalse(presets.is_preset("pla-nope"))
+
+    def test_registry_validates(self) -> None:
+        self.assertEqual(presets.validate(), [])
+
+    def test_names_are_material_plus_slot_codes(self) -> None:
+        # <material>-<codes>, e.g. pla-cmyk / pla-cmyn, so names stay predictable.
+        for name in presets.names():
+            codes = presets.PRESETS[name]["codes"]
+            self.assertEqual(name.rsplit("-", 1)[-1], "".join(codes).lower())
+
+    def test_n_means_neutral_grey_and_g_means_green(self) -> None:
+        # Six- and eight-spool sets will contain green, so "g" must stay reserved
+        # for it; the neutral grey is "N".
+        self.assertEqual(presets.SLOT_CODES["G"], "green")
+        self.assertEqual(presets.SLOT_CODES["N"], "grey")
+        self.assertIn("neutral", presets.SLOT_NAME_WORDS["N"])
+        for name in presets.names():
+            self.assertNotIn("g", presets.PRESETS[name]["codes"])
+        # Ambiguous or older short names do not resolve to anything.
+        for gone in (
+            "pla-cmyg",
+            "pla-cmy-grey",
+            "pla-cmy-n",
+            "translucent-cmyg",
+            "translucent-cmy-grey",
+            "translucent-cmy-n",
+        ):
+            self.assertFalse(presets.is_preset(gone))
+
+    def test_describe_shows_the_slot_codes(self) -> None:
+        text = presets.describe("pla-cmyk")
+        for code, colour in (("C", "Cyan"), ("M", "Magenta"), ("Y", "Yellow"), ("K", "Black")):
+            self.assertIn(f"{code}:", text)
+            self.assertIn(colour, text)
+        self.assertIn("N:Neutral Grey", presets.describe("pla-cmyn"))
 
     def test_describe_mentions_the_model_and_spools(self) -> None:
         text = presets.describe("pla-cmyk")
@@ -108,6 +143,36 @@ class ResolutionTests(unittest.TestCase):
         config = _resolve_config("pla-rybw", None)
         self.assertEqual(config["mix"]["components"], 3)
 
+    def test_full_config_file_replaces_preset_spools(self) -> None:
+        """A file with base_filaments replaces the preset's spools and slot mapping."""
+
+        path = Path(self.tmp.name) / "spools.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "base_filaments": [
+                        {"slot": 1, "color": "#FF00FF", "name": "File Magenta"},
+                        {"slot": 2, "color": "#00FFFF", "name": "File Cyan"},
+                        {"slot": 3, "color": "#808080", "name": "File Grey"},
+                        {"slot": 4, "color": "#FFFF00", "name": "File Yellow"},
+                    ]
+                }
+            )
+        )
+        config = _resolve_config(str(path), "pla-cmyk")
+        colors, names = _base_colors(config)
+        self.assertEqual(names[0], "File Magenta")
+        self.assertEqual(colors[3], (255, 255, 0))
+        # the preset's mix settings survive, only the spools were replaced
+        self.assertEqual(config["mix"]["model"], "pigment")
+
+    def test_minimal_config_file_keeps_preset_spools(self) -> None:
+        path = Path(self.tmp.name) / "model-only.json"
+        path.write_text(json.dumps({"mix": {"model": "average"}}))
+        colors, names = _base_colors(_resolve_config(str(path), "pla-cmyk"))
+        self.assertEqual(names[3], "Black")
+        self.assertEqual(colors[3], (0, 0, 0))
+
     def test_missing_config_file_is_an_error(self) -> None:
         with self.assertRaises(FileNotFoundError):
             _resolve_config(str(Path(self.tmp.name) / "absent.json"), None)
@@ -119,7 +184,7 @@ class PresetBuildTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             scad = Path(tmp) / "square.scad"
             scad.write_text("color([1, 0, 0]) { cube(size = [4, 4, 2]); }\n")
-            config = _resolve_config(None, "translucent-cmyg")
+            config = _resolve_config(None, "translucent-cmyn")
             colors, names = _base_colors(config)
             mix = config["mix"]
             report = build(
