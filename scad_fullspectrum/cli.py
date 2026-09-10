@@ -8,7 +8,8 @@ import sys
 import zipfile
 from pathlib import Path
 
-from .color import RGB, hex_to_rgb
+from . import presets
+from .color import EXPERIMENTAL_MODELS, MIX_MODELS, RGB, hex_to_rgb
 from .pipeline import BuildOptions, build
 
 __all__ = ["main"]
@@ -24,9 +25,28 @@ _EXAMPLE_CONFIG = {
         {"slot": 4, "color": "#FFFF00", "name": "Yellow"},
     ],
     "uncolored": None,
-    "mix": {"components": 2, "step": 5, "pure_threshold": 1.0, "max_mixes": None},
+    "mix": {"components": 2, "step": 5, "pure_threshold": 1.0, "max_mixes": None, "model": "average"},
     "printer": {"bed": [270.0, 270.0]},
 }
+
+
+def _resolve_config(path: str | None, preset_name: str | None) -> dict:
+    """Combine a built-in preset, a config file (or preset name) and the flags.
+
+    Precedence, lowest first: preset, config file, explicit command line flags.
+    ``-c`` accepts a preset name as a shortcut when no such file exists.
+    """
+
+    config: dict = {}
+    file_config: dict = {}
+    if path is not None:
+        if not Path(path).exists() and presets.is_preset(path):
+            file_config = presets.get(path)
+        else:
+            file_config = load_config(path)
+    if preset_name is not None:
+        config = presets.get(preset_name)
+    return presets.merge(config, file_config)
 
 
 def load_config(path: str | None) -> dict:
@@ -96,21 +116,40 @@ def build_parser() -> argparse.ArgumentParser:
             "as blends of the loaded filaments."
         ),
         epilog=(
+            "spool presets: --list-presets, e.g. --preset pla-cmyw. "
             "config keys: base_filaments[{slot,color,name}], uncolored, template, "
-            "mix{components,step,pure_threshold,max_mixes}, printer{bed}, openscad, settings"
+            "mix{components,step,pure_threshold,max_mixes,model}, printer{bed}, openscad, settings"
         ),
     )
     parser.add_argument("scad", nargs="?", help="input .scad file")
     parser.add_argument("-o", "--output", help="output .3mf project file")
-    parser.add_argument("-c", "--config", help="JSON config with the loaded filaments")
+    parser.add_argument("-c", "--config", help="JSON config with the loaded filaments (or a preset name)")
+    parser.add_argument("--preset", help=f"built-in spool preset ({', '.join(presets.names())})")
+    parser.add_argument("--list-presets", action="store_true", help="show the built-in presets and exit")
     parser.add_argument("--template", help="project_settings.config or .3mf project to copy settings from")
     parser.add_argument("--uncolored", help="filament for uncolored geometry: #RRGGBB or slot index")
     parser.add_argument("--components", type=int, choices=(1, 2, 3, 4), help="max filaments per mix")
     parser.add_argument("--step", type=int, help="percentage grid for mix candidates (default 5)")
     parser.add_argument("--pure-threshold", type=float, help="ΔE within which a spool is used as is")
     parser.add_argument("--max-mixes", type=int, help="cap the number of mixed filaments")
+    parser.add_argument(
+        "--mix-model",
+        choices=MIX_MODELS,
+        help=(
+            "blend model: average (opaque), pigment (slicer preview), "
+            "transmission (translucent, experimental - uncalibrated)"
+        ),
+    )
     parser.add_argument("--bed", help="build plate size in mm, e.g. 270x270")
     parser.add_argument("--openscad", help="openscad executable (default: openscad)")
+    parser.add_argument(
+        "-D",
+        "--define",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="parameter passed to OpenSCAD (repeatable)",
+    )
     parser.add_argument("--report", help="write a JSON report next to the project")
     parser.add_argument("--keep-temp", help="keep intermediate CSG/STL files in this directory")
     parser.add_argument("--print-example-config", action="store_true", help="print a sample config and exit")
@@ -122,6 +161,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
+    if args.list_presets:
+        for name in presets.names():
+            print(presets.describe(name))
+        return 0
+
     if args.print_example_config:
         print(json.dumps(_EXAMPLE_CONFIG, indent=2))
         return 0
@@ -130,10 +174,15 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("the SCAD file and -o/--output are required")
 
     try:
-        config = load_config(args.config)
+        config = _resolve_config(args.config, args.preset)
     except (OSError, ValueError, json.JSONDecodeError) as error:
         parser.error(str(error))
         return 2
+    if args.preset:
+        preset = presets.PRESETS[args.preset]
+        print(f"preset  : {args.preset} - {preset['summary']}", file=sys.stderr)
+        if preset.get("note"):
+            print(f"note    : {preset['note']}", file=sys.stderr)
 
     try:
         colors, names = _base_colors(config)
@@ -181,7 +230,9 @@ def main(argv: list[str] | None = None) -> int:
             args.pure_threshold if args.pure_threshold is not None else float(mix.get("pure_threshold", 1.0))
         ),
         max_mixes=args.max_mixes if args.max_mixes is not None else mix.get("max_mixes"),
+        mix_model=args.mix_model or mix.get("model", "average"),
         openscad=args.openscad or config.get("openscad", "openscad"),
+        defines=list(args.define or []),
         bed=(float(bed[0]), float(bed[1])),
         keep_temp=Path(args.keep_temp).resolve() if args.keep_temp else None,
         verbose=args.verbose,
@@ -193,18 +244,39 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {error}", file=sys.stderr)
         return 1
 
+    if report.mix_model in EXPERIMENTAL_MODELS:
+        print(
+            f"warning: mix model {report.mix_model!r} is an experimental heuristic "
+            "(no measured absorption spectra, reference thickness or illumination); "
+            "its ΔE compares the formula with itself. Validate recipes with printed "
+            "swatches at your working thickness, backing and light.",
+            file=sys.stderr,
+        )
+    if args.report:
+        # Write the report first: printing to a closed pipe must not lose it.
+        Path(args.report).write_text(report.to_json())
     try:
         _print_report(report, names)
     except BrokenPipeError:  # e.g. ``... | head``
         return 0
-    if args.report:
-        Path(args.report).write_text(report.to_json())
     return 0
 
 
 def _print_report(report, names: list[str]) -> None:
+    summary = report.summary
     print(f"project : {report.output}")
     print(f"parts   : {len(report.parts)}  triangles: {report.triangles}")
+    if summary:
+        print(f"model   : {report.mix_model}")
+        print(
+            f"filaments: {summary['physical_filaments']} spools + {summary['mixes']} mixes"
+            f"  ({summary['extruders_used']} used, {summary['shared_slots']} colours share a slot)"
+        )
+        print(
+            f"predicted: median ΔE {summary['median_delta_e']:.1f}"
+            f"  worst ΔE {summary['max_delta_e']:.1f}"
+            f"  predictions above ΔE 10: {summary['delta_e_over_10']}/{len(report.colors)}"
+        )
     if report.colors:
         print("\ncolour      extruder  filament mix")
         for entry in report.colors:

@@ -148,6 +148,17 @@ translate([12, 0, 0]) { cube(size = [4, 4, 2]); }
             self.assertTrue(rows[0].startswith("1,4,1,1,"))
             self.assertTrue(rows[1].startswith("2,4,1,1,"))
 
+            summary = report.summary
+            self.assertEqual(summary["parts"], 3)
+            self.assertEqual(summary["physical_filaments"], 4)
+            self.assertEqual(summary["mixes"], 2)
+            self.assertEqual(summary["extruders_used"], 3)
+            self.assertEqual(summary["shared_slots"], 0)
+            self.assertEqual(summary["delta_e_over_10"], 1)  # the saturated red
+            self.assertEqual(report.mix_model, "average")
+            self.assertFalse(report.mix_model_experimental)
+            self.assertAlmostEqual(summary["max_delta_e"], max(e["delta_e"] for e in report.colors), places=2)
+
     def test_coloured_hull_stays_printable(self) -> None:
         with TemporaryDirectory() as tmp:
             scad = Path(tmp) / "hull.scad"
@@ -163,6 +174,53 @@ translate([12, 0, 0]) { cube(size = [4, 4, 2]); }
             self.assertEqual(len(report.parts), 1)
             self.assertEqual(report.parts[0]["name"], "#FF0000")
             self.assertGreater(report.parts[0]["triangles"], 0)
+
+    def test_openscad_defines_are_passed_through(self) -> None:
+        with TemporaryDirectory() as tmp:
+            scad = Path(tmp) / "param.scad"
+            scad.write_text(
+                "segments = 2;\n"
+                "for (index = [0 : segments - 1]) {\n"
+                "    translate([index * 4, 0, 0])\n"
+                "        color([1, index / 10, 0]) { cube(size = [2, 2, 1]); }\n"
+                "}\n"
+            )
+            two = build(
+                scad,
+                Path(tmp) / "two.3mf",
+                BuildOptions(base_colors=BASES, physical_count=4),
+                dict(SETTINGS),
+            )
+            four = build(
+                scad,
+                Path(tmp) / "four.3mf",
+                BuildOptions(base_colors=BASES, physical_count=4, defines=["segments=4"]),
+                dict(SETTINGS),
+            )
+            # Each segment gets its own colour, so the part count follows -D.
+            self.assertEqual(len(two.parts), 2)
+            self.assertEqual(len(four.parts), 4)
+
+    def test_translucent_model_reaches_saturated_hues(self) -> None:
+        """With the transmission model CMY spools can print a saturated red."""
+
+        with TemporaryDirectory() as tmp:
+            scad = Path(tmp) / "red.scad"
+            scad.write_text("color([1, 0, 0]) { cube(size = [4, 4, 2]); }\n")
+            cmy = [hex_to_rgb(c) for c in ("#00FFFF", "#FF00FF", "#808080", "#FFFF00")]
+            options = BuildOptions(
+                base_colors=cmy,
+                physical_count=4,
+                components=2,
+                step=1,
+                mix_model="transmission",
+            )
+            report = build(scad, Path(tmp) / "red.3mf", options, dict(SETTINGS))
+            self.assertEqual(report.mix_model, "transmission")
+            self.assertTrue(report.mix_model_experimental)
+            self.assertEqual(len(report.rows), 1)
+            self.assertEqual(report.rows[0]["slots"], [2, 4])  # magenta + yellow
+            self.assertLess(report.colors[0]["delta_e"], 3.0)
 
     def test_uncolored_geometry_is_dropped_without_a_target(self) -> None:
         with TemporaryDirectory() as tmp:

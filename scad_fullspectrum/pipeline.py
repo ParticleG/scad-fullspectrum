@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Sequence
 
 from . import csg
-from .color import RGB, rgb_to_hex
+from .color import EXPERIMENTAL_MODELS, RGB, rgb_to_hex
 from .mesh import read_stl
 from .mixes import encode_definitions, plan
 from .threemf import Part, write_project
@@ -33,7 +33,9 @@ class BuildOptions:
     step: int = 5
     pure_threshold: float = 1.0
     max_mixes: int | None = None
+    mix_model: str = "average"
     openscad: str = "openscad"
+    defines: list[str] = field(default_factory=list)
     bed: tuple[float, float] = (270.0, 270.0)
     keep_temp: Path | None = None
     verbose: bool = False
@@ -48,6 +50,8 @@ class BuildReport:
     rows: list[dict] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     triangles: int = 0
+    mix_model: str = "average"
+    mix_model_experimental: bool = False
     summary: dict = field(default_factory=dict)
 
     def to_json(self) -> str:
@@ -56,6 +60,13 @@ class BuildReport:
 
 def _run(command: Sequence[str]) -> subprocess.CompletedProcess:
     return subprocess.run(list(command), capture_output=True, text=True, check=False)
+
+
+def _openscad_command(options: BuildOptions, output: Path, source: Path) -> list[str]:
+    command = [options.openscad, "-o", str(output)]
+    for define in options.defines:
+        command += ["-D", define]
+    return command + [str(source)]
 
 
 def _resolve_imports(nodes: list[csg.Node], base_dir: Path) -> None:
@@ -103,6 +114,28 @@ def _collect_targets(tree: list[csg.Node]) -> list[RGB | None]:
     return targets
 
 
+def _summarise(report: BuildReport, parts: Sequence[Part], rows: Sequence[tuple], physical: int) -> dict:
+    """Colour-matching and filament-count statistics for the CLI/report.
+
+    ``delta_e_over_10`` counts colours whose *predicted* match error is above 10;
+    it says nothing about whether the colour is inside the spools' gamut.
+    """
+
+    delta_e = [entry["delta_e"] for entry in report.colors]
+    slot_usage = Counter(entry["extruder"] for entry in report.colors)
+    return {
+        "parts": len(parts),
+        "triangles": report.triangles,
+        "physical_filaments": physical,
+        "mixes": len(rows),
+        "extruders_used": len(slot_usage),
+        "shared_slots": sum(count - 1 for count in slot_usage.values() if count > 1),
+        "median_delta_e": round(statistics.median(delta_e), 2) if delta_e else 0.0,
+        "max_delta_e": round(max(delta_e), 2) if delta_e else 0.0,
+        "delta_e_over_10": sum(1 for value in delta_e if value > 10.0),
+    }
+
+
 def build(
     scad_path: str | Path,
     output_path: str | Path,
@@ -116,13 +149,18 @@ def build(
     if not scad_path.is_file():
         raise FileNotFoundError(f"SCAD file not found: {scad_path}")
 
-    report = BuildReport(scad=str(scad_path), output=str(output_path))
+    report = BuildReport(
+        scad=str(scad_path),
+        output=str(output_path),
+        mix_model=options.mix_model,
+        mix_model_experimental=options.mix_model in EXPERIMENTAL_MODELS,
+    )
     temp_root = options.keep_temp or Path(tempfile.mkdtemp(prefix="scad-fullspectrum-"))
     temp_root.mkdir(parents=True, exist_ok=True)
 
     try:
         dump_path = temp_root / f"{scad_path.stem}.csg"
-        result = _run([options.openscad, "-o", str(dump_path), str(scad_path)])
+        result = _run(_openscad_command(options, dump_path, scad_path))
         if options.verbose and result.stdout.strip():
             print(result.stdout.strip())
         if not dump_path.is_file():
@@ -157,7 +195,7 @@ def build(
             csg_path = temp_root / f"part_{index:03d}.csg"
             stl_path = temp_root / f"part_{index:03d}.stl"
             csg_path.write_text(csg.dump(statements) + "\n")
-            render = _run([options.openscad, "-o", str(stl_path), str(csg_path)])
+            render = _run(_openscad_command(options, stl_path, csg_path))
             if not stl_path.is_file() or stl_path.stat().st_size == 0:
                 detail = render.stderr.strip().splitlines()[-1] if render.stderr.strip() else "no mesh"
                 report.warnings.append(f"{label}: OpenSCAD produced nothing ({detail})")
@@ -181,6 +219,7 @@ def build(
             step=options.step,
             pure_threshold=options.pure_threshold,
             max_mixes=options.max_mixes,
+            model=options.mix_model,
         )
 
         parts: list[Part] = []
@@ -220,6 +259,7 @@ def build(
             for _, assignment in sorted(plan_result.assignments.items(), key=lambda item: item[1].extruder)
             if assignment.parts
         ]
+        report.summary = _summarise(report, parts, rows, options.physical_count)
 
         write_project(
             output_path,
