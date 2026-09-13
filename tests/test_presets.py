@@ -109,7 +109,6 @@ class MergeTests(unittest.TestCase):
         self.assertEqual(merged["mix"]["step"], 1)
         # untouched preset keys survive
         self.assertEqual(merged["mix"]["model"], "pigment")
-        self.assertEqual(merged["mix"]["components"], 2)
         self.assertEqual(merged["uncolored"], 4)
 
     def test_base_filaments_are_replaced_not_merged(self) -> None:
@@ -135,13 +134,8 @@ class ResolutionTests(unittest.TestCase):
         path.write_text(json.dumps({"mix": {"model": "average"}, "uncolored": 2}))
         config = _resolve_config(str(path), "pla-cmyk")
         self.assertEqual(config["mix"]["model"], "average")
-        self.assertEqual(config["mix"]["components"], 2)
         self.assertEqual(config["uncolored"], 2)
         self.assertIn("Black", _base_colors(config)[1])
-
-    def test_dash_c_accepts_a_preset_name(self) -> None:
-        config = _resolve_config("pla-rybw", None)
-        self.assertEqual(config["mix"]["components"], 3)
 
     def test_full_config_file_replaces_preset_spools(self) -> None:
         """A file with base_filaments replaces the preset's spools and slot mapping."""

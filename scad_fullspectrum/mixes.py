@@ -185,7 +185,7 @@ class _Candidates:
                         for pct_a in range(step, 100 - 2 * step + 1, step):
                             for pct_b in range(step, 100 - pct_a - step + 1, step):
                                 self._add((i + 1, j + 1, k + 1), (pct_a, pct_b, 100 - pct_a - pct_b))
-        if components >= 4:
+        if components >= 4 and count >= 4:
             for pct_a in range(step, 100 - 3 * step + 1, step):
                 for pct_b in range(step, 100 - pct_a - 2 * step + 1, step):
                     for pct_c in range(step, 100 - pct_a - pct_b - step + 1, step):
@@ -218,7 +218,7 @@ class _Candidates:
 def solve(
     target: RGB,
     bases: Sequence[RGB],
-    components: int = 2,
+    components: int = 4,
     step: int = 5,
     simplicity_slack: float = 1.0,
     model: str = "average",
@@ -239,7 +239,7 @@ def solve(
 def plan(
     targets: Sequence[RGB],
     bases: Sequence[RGB],
-    components: int = 2,
+    components: int = 4,
     step: int = 5,
     pure_threshold: float = 1.0,
     max_mixes: int | None = None,

@@ -6,6 +6,6 @@
     { "slot": 4, "color": "#FFFF00", "name": "Yellow" }
   ],
   "uncolored": null,
-  "mix": { "components": 2, "step": 5, "pure_threshold": 1.0, "max_mixes": null, "model": "average" },
+  "mix": { "components": 4, "step": 5, "pure_threshold": 1.0, "max_mixes": null, "model": "average" },
   "printer": { "bed": [270.0, 270.0] }
 }

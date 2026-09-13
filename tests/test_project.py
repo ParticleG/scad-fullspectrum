@@ -8,11 +8,14 @@ import sys
 import unittest
 import xml.etree.ElementTree as ET
 import zipfile
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from scad_fullspectrum.cli import main as cli_main  # noqa: E402
 from scad_fullspectrum.color import hex_to_rgb  # noqa: E402
 from scad_fullspectrum.pipeline import BuildOptions, build  # noqa: E402
 from scad_fullspectrum.threemf import Part, write_project  # noqa: E402
@@ -234,6 +237,30 @@ translate([12, 0, 0]) { cube(size = [4, 4, 2]); }
             )
             self.assertEqual(len(report.parts), 2)
             self.assertTrue(any("uncolored" in warning for warning in report.warnings))
+
+    def test_omitted_component_limit_can_match_a_four_spool_color(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            scad = root / "interior.scad"
+            scad.write_text("color([0.25, 0.25, 0.25]) cube([2, 2, 1]);\n")
+            config = root / "spools.json"
+            config.write_text(json.dumps({
+                "base_filaments": [
+                    {"slot": slot, "color": color}
+                    for slot, color in enumerate(("#FF0000", "#00FF00", "#0000FF", "#000000"), 1)
+                ],
+                "mix": {"model": "average"},
+            }))
+            report_path = root / "report.json"
+            with redirect_stdout(StringIO()):
+                result = cli_main([
+                    str(scad), "-o", str(root / "interior.3mf"),
+                    "-c", str(config), "--report", str(report_path),
+                ])
+            self.assertEqual(result, 0)
+            report = json.loads(report_path.read_text())
+            self.assertEqual(report["colors"][0]["blend"], "#404040")
+            self.assertEqual(report["rows"][0]["slots"], [1, 2, 3, 4])
 
 
 if __name__ == "__main__":

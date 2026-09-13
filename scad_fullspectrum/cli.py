@@ -25,7 +25,7 @@ _EXAMPLE_CONFIG = {
         {"slot": 4, "color": "#FFFF00", "name": "Yellow"},
     ],
     "uncolored": None,
-    "mix": {"components": 2, "step": 5, "pure_threshold": 1.0, "max_mixes": None, "model": "average"},
+    "mix": {"components": 4, "step": 5, "pure_threshold": 1.0, "max_mixes": None, "model": "average"},
     "printer": {"bed": [270.0, 270.0]},
 }
 
@@ -128,7 +128,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--list-presets", action="store_true", help="show the built-in presets and exit")
     parser.add_argument("--template", help="project_settings.config or .3mf project to copy settings from")
     parser.add_argument("--uncolored", help="filament for uncolored geometry: #RRGGBB or slot index")
-    parser.add_argument("--components", type=int, choices=(1, 2, 3, 4), help="max filaments per mix")
+    parser.add_argument("--components", type=int, choices=(1, 2, 3, 4), help="max filaments per mix (default 4)")
     parser.add_argument("--step", type=int, help="percentage grid for mix candidates (default 5)")
     parser.add_argument("--pure-threshold", type=float, help="ΔE within which a spool is used as is")
     parser.add_argument("--max-mixes", type=int, help="cap the number of mixed filaments")
@@ -224,7 +224,7 @@ def main(argv: list[str] | None = None) -> int:
         base_names=names,
         uncolored=uncolored,
         physical_count=len(colors),
-        components=args.components or int(mix.get("components", 2)),
+        components=args.components or int(mix.get("components", 4)),
         step=args.step or int(mix.get("step", 5)),
         pure_threshold=(
             args.pure_threshold if args.pure_threshold is not None else float(mix.get("pure_threshold", 1.0))

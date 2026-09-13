@@ -29,7 +29,7 @@ class BuildOptions:
     base_names: list[str] = field(default_factory=list)
     uncolored: RGB | None = None
     physical_count: int = 4
-    components: int = 2
+    components: int = 4
     step: int = 5
     pure_threshold: float = 1.0
     max_mixes: int | None = None

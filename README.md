@@ -50,7 +50,7 @@ Virtual filament IDs start after the physical spools: with four spools, mix row
     { "slot": 4, "color": "#FFFF00", "name": "Yellow" }
   ],
   "uncolored": 3,
-  "mix": { "components": 2, "step": 5, "pure_threshold": 1.0, "max_mixes": null, "model": "average" },
+  "mix": { "components": 4, "step": 5, "pure_threshold": 1.0, "max_mixes": null, "model": "average" },
   "printer": { "bed": [270.0, 270.0] },
   "template": "templates/project_settings.config"
 }
@@ -60,7 +60,7 @@ Virtual filament IDs start after the physical spools: with four spools, mix row
 | --- | --- |
 | `base_filaments` | the four spools actually loaded, in toolhead order; `color` is the filament's display colour |
 | `uncolored` | what to do with geometry outside any `color()` scope: a hex colour or a slot index (default: drop it and warn) |
-| `mix.components` | maximum filaments per recipe, 2–4 (default 2: fewest tool changes) |
+| `mix.components` | maximum filaments per recipe, 2–4 (default 4, including when the field is omitted) |
 | `mix.step` | percentage grid for candidate recipes (default 5 %) |
 | `mix.pure_threshold` | ΔE₀₀ below which a spool is used as-is (default 1.0) |
 | `mix.max_mixes` | cap on virtual filaments; the perceptually closest recipes are merged until the cap is met (the reported blend and ΔE always describe the recipe actually assigned) |
@@ -68,6 +68,13 @@ Virtual filament IDs start after the physical spools: with four spools, mix row
 | `printer.bed` | build plate size; the model is centred on it |
 | `template` | `project_settings.config` or a sliced `.3mf` whose settings are copied (printer, process, filament presets, wipe tower, …) |
 | `settings` | arbitrary overrides merged into `Metadata/project_settings.config` |
+
+All built-in presets allow up to four components. A config that omits
+`mix.components` (or the entire `mix` object) also defaults to four; explicit
+config values and `--components` still take precedence. This is an upper limit,
+not a requirement to use all four spools: simpler recipes can still win.
+Four-component searches, especially with `--step 1`, cost more time and can
+increase tool changes. Use `--components 2` or `3` when that trade-off is preferable.
 
 ### Presets
 
@@ -164,18 +171,18 @@ recipe, not a measurement of the printed part. The CLI prints a summary of it
 carries the per-colour detail.
 
 `--mix-model`, `--step` and `--components` widen or correct that search space.
-The table below runs the 60-colour hue wheel through the shipped example (spool
-colours are the idealised `#00FF…` values, see the caveat at the end of this
-section):
+The table below runs the 60-colour hue wheel with the shipped example's spool
+colours. Component counts are explicit so these measurements do not depend on
+the default (the idealised `#00FF…` values also need the caveat below):
 
 | setting | mixes | median ΔE | worst ΔE | predicted > ΔE 10 |
-| --- | --- | --- | --- | --- | --- |
-| `average`, `--step 5` (default) | 40 | 6.4 | 22.1 | 20/60 |
-| `average`, `--step 1` | 49 | 6.2 | 22.1 | 20/60 |
-| `pigment`, `--step 5` | 42 | 4.0 | 21.2 | 19/60 |
+| --- | --- | --- | --- | --- |
+| `average`, `--components 2 --step 5` | 40 | 6.4 | 22.1 | 20/60 |
+| `average`, `--components 2 --step 1` | 49 | 6.2 | 22.1 | 20/60 |
+| `pigment`, `--components 2 --step 5` | 42 | 4.0 | 21.2 | 19/60 |
 | `pigment`, `--components 3 --step 1` | 50 | 3.8 | 21.2 | 19/60 |
-| `transmission` (experimental), `--step 5` | 42 | 1.2 | 8.0 | 0/60 |
-| `transmission` (experimental), `--step 1` | 57 | 0.3 | 1.6 | 0/60 |
+| `transmission` (experimental), `--components 2 --step 5` | 42 | 1.2 | 8.0 | 0/60 |
+| `transmission` (experimental), `--components 2 --step 1` | 57 | 0.3 | 1.6 | 0/60 |
 
 The `transmission` rows only say that the wheel is reachable *inside that
 formula*: the model is uncalibrated (see below), so they are **not** evidence

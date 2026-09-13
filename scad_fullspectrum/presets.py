@@ -68,7 +68,7 @@ PRESETS: dict[str, dict] = {
         ],
         "uncolored": None,
         "mix": {
-            "components": 2,
+            "components": 4,
             "step": 1,
             "pure_threshold": 1.0,
             "max_mixes": None,
@@ -90,7 +90,7 @@ PRESETS: dict[str, dict] = {
             _filament(4, "#000000", "Black"),
         ],
         "uncolored": None,
-        "mix": {"components": 2, "step": 5, "pure_threshold": 1.0, "max_mixes": None, "model": "pigment"},
+        "mix": {"components": 4, "step": 5, "pure_threshold": 1.0, "max_mixes": None, "model": "pigment"},
     },
     "pla-cmyw": {
         "codes": ["C", "M", "Y", "W"],
@@ -107,7 +107,7 @@ PRESETS: dict[str, dict] = {
             _filament(4, "#FFFFFF", "White"),
         ],
         "uncolored": None,
-        "mix": {"components": 2, "step": 5, "pure_threshold": 1.0, "max_mixes": None, "model": "pigment"},
+        "mix": {"components": 4, "step": 5, "pure_threshold": 1.0, "max_mixes": None, "model": "pigment"},
     },
     "pla-cmyn": {
         "codes": ["C", "M", "Y", "N"],
@@ -124,7 +124,7 @@ PRESETS: dict[str, dict] = {
             _filament(4, "#808080", "Neutral Grey"),
         ],
         "uncolored": None,
-        "mix": {"components": 2, "step": 5, "pure_threshold": 1.0, "max_mixes": None, "model": "pigment"},
+        "mix": {"components": 4, "step": 5, "pure_threshold": 1.0, "max_mixes": None, "model": "pigment"},
     },
     "pla-rybw": {
         "codes": ["R", "Y", "B", "W"],
@@ -141,7 +141,7 @@ PRESETS: dict[str, dict] = {
             _filament(4, "#FFFFFF", "White"),
         ],
         "uncolored": None,
-        "mix": {"components": 3, "step": 5, "pure_threshold": 1.0, "max_mixes": None, "model": "pigment"},
+        "mix": {"components": 4, "step": 5, "pure_threshold": 1.0, "max_mixes": None, "model": "pigment"},
     },
 }
 
