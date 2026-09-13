@@ -1,5 +1,7 @@
 PANCHROMA CMYN / X-RITE i1Pro 2 RECORDING SHEET
 
+Language: English | Simplified Chinese: measurements-i1pro2-guide.zh-CN.txt
+
 Files and status
 ----------------
 measurements-i1pro2.csv is a new, unmeasured reflection template.
@@ -35,11 +37,16 @@ printed +Z face; bottom means the build-plate face. Zero rotation is the chosen
 reference orientation with the clipped corner used to reproduce placement.
 The repeat column reserves three reads; it does not assert that any were taken.
 
-measurement_condition is deliberately blank. D50/1931_2 describes the
-colorimetric computation, not an automatic claim of native M1 measurement.
-Record the actual acquisition condition and any simulation/FWA compensation.
+The generator leaves measurement_condition blank. A run may prefill a chosen
+acquisition condition, such as native M2, for unmeasured rows. Such a prefill is a
+protocol default, not evidence that the instrument used that condition.
+Record the actual acquisition condition and any simulation/FWA compensation;
+never relabel existing readings to match a new protocol.
+D50/1931_2 describes colorimetric computation, not native M1 or M2 acquisition.
 ArgyllCMS documents that its i1Pro 2 driver does not use the device UV mode;
-do not label a software simulation as a native M1 or M2 measurement.
+do not label a software simulation as a native M1 or M2 measurement or pool it
+with a native dataset without a separate comparability study.
+M0/M1/M2 datasets are different acquisition conditions, not independent repeats.
 
 Fill once per setup, then copy to all applicable rows
 ---------------------------------------------------
@@ -114,9 +121,10 @@ Neither backing_id nor measurement_session is an automatically verified value.
 backing-references-i1pro2.csv contains only measurements of bare backings,
 without a coupon. It reserves 12 reads for one session: each of two backings
 at session_phase=start and end, with three repositioned repeats each.
-Lab remains in columns E/F/G. Spectra and actual acquisition conditions remain
-blank until measured/exported; use the same instrument and colorimetric settings
-as for the coupon readings. These are not calibration-tile or dark-current reads.
+Lab remains in columns E/F/G. Lab and spectral-file cells remain blank until
+measured/exported. Any prefilled acquisition condition is only a run default;
+verify the actual instrument and colorimetric settings against the coupon rows.
+These are not calibration-tile or dark-current reads.
 
 Fill measurement_session with the same session ID used for the corresponding
 coupon readings. Join using BOTH backing_id and measurement_session, and compare
@@ -144,10 +152,20 @@ Do not subtract backing Lab from coupon Lab or assume direct spectral subtractio
 isolates the filament: reflection includes filtering, scattering and multiple
 reflections. A defined optical model is needed for such an inversion.
 
+An optically neutral certified backing is not a prerequisite for an empirical
+run-specific calibration. If copier paper is the available white backing, keep
+the same identified stack and record its bare spectrum. Native M2 can reduce UV-
+excited fluorescence but does not guarantee a neutral or fluorescence-free white.
+Keep coupon readings and both bare backings in the same acquisition condition.
+Do not set paper to Lab(100, 0, 0), clip values above 100 percent, or subtract its
+blue cast from coupon Lab. Keep raw exports; a different illumination or physical
+backing needs its own validation. Do not silently change an established run.
+
 Analysis boundaries
 -------------------
 Do not pool white- and black-backed readings, or reflective and backlit data.
-Use mix-fit for fitting and keep mix-holdout out of model fitting and tuning.
+Use mix-fit for fitting and reserve mix-holdout for independent validation;
+keep mix-holdout out of model fitting and tuning.
 Repeated reads of one coupon assess capture repeatability; duplicate printed
 coupons and independent reprints assess different sources of variation.
 A measured reflection spectrum includes the sample, backing and measurement

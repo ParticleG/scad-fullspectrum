@@ -286,6 +286,8 @@ def main(argv: list[str] | None = None) -> int:
     template = load_settings_template(None)
     guide_path = Path(__file__).resolve().parents[1] / "templates" / "measurements-i1pro2-guide.txt"
     guide = guide_path.read_text(encoding="utf-8")
+    guide_zh_path = guide_path.with_name("measurements-i1pro2-guide.zh-CN.txt")
+    guide_zh = guide_zh_path.read_text(encoding="utf-8")
     try:
         args.output.mkdir(parents=True, exist_ok=False)
     except FileExistsError:
@@ -313,6 +315,7 @@ def main(argv: list[str] | None = None) -> int:
     _write_i1pro2_sheet(args.output, records)
     _write_backing_sheets(args.output)
     (args.output / "measurements-i1pro2-guide.txt").write_text(guide, encoding="utf-8")
+    (args.output / guide_zh_path.name).write_text(guide_zh, encoding="utf-8")
     manifest = {
         "measurement_status": "unmeasured; blank CSV fields are for actual observations",
         "sources": SOURCES,
@@ -336,6 +339,7 @@ def main(argv: list[str] | None = None) -> int:
     print("Physical slots: 1=Cyan, 2=Magenta, 3=Yellow, 4=Grey (N), not Black.")
     print("Open the 3MF files; SCAD and SVG are geometry/layout references, not colour predictions.")
     print("i1Pro 2: measurements-i1pro2.csv; protocol: measurements-i1pro2-guide.txt.")
+    print("Chinese protocol: measurements-i1pro2-guide.zh-CN.txt.")
     print("Backing controls: backings.csv; bare readings: backing-references-i1pro2.csv.")
     return 0
 

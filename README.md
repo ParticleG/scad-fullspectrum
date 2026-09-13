@@ -358,10 +358,13 @@ their own validation. It does not install a calibrated colour model in the CLI.
 #### i1Pro 2 recording protocol
 
 Every generation also writes `measurements-i1pro2.csv`, `backings.csv`,
-`backing-references-i1pro2.csv` and `measurements-i1pro2-guide.txt`.
-The guide is copied from the versioned
-[instrument protocol template](templates/measurements-i1pro2-guide.txt); edit
-that source rather than a generated copy when improving the shared workflow.
+`backing-references-i1pro2.csv` and both instrument guides:
+`measurements-i1pro2-guide.txt` (English) and
+`measurements-i1pro2-guide.zh-CN.txt` (Simplified Chinese).
+The guides are copied from the versioned
+[English instrument protocol template](templates/measurements-i1pro2-guide.txt)
+and [Simplified Chinese instrument protocol template](templates/measurements-i1pro2-guide.zh-CN.txt);
+edit these sources rather than generated copies when improving the shared workflow.
 
 For the current 107 coupons, the instrument sheet reserves 642 readings:
 white-backed reflection first, then black-backed reflection, with three
@@ -379,10 +382,12 @@ choose the instrument sheet for this workflow rather than entering results twice
 * Record actual thickness, print run, measurement session, backing, acquisition
   software/version, instrument identity and measurement condition. Do not copy
   the design thickness into a field intended for a physical measurement.
-* `measurement_condition` is intentionally blank. D50 in the Lab computation
-  does not imply native M1 acquisition. ArgyllCMS documents that its i1Pro 2
-  driver does not use the device UV mode; identify any simulation or FWA
-  compensation rather than reporting it as a native hardware condition.
+* The generator leaves `measurement_condition` blank. A run may prefill a chosen
+  native condition for unmeasured rows, but this is only a protocol default:
+  verify actual acquisition and never relabel existing results. D50 in the Lab
+  computation does not imply native M1 or M2 acquisition. ArgyllCMS documents
+  that its i1Pro 2 driver does not use the device UV mode; identify simulation
+  or FWA compensation rather than reporting it as a native hardware condition.
 
 Use the original calibration base for instrument calibration and a separate,
 identified sample backing. Use spot measurements in the central area, with
@@ -408,15 +413,24 @@ coupon Lab. Preserve individual spectra and placement information. Append
 uniquely identified controls for further sessions or uniformity checks instead
 of replacing previous readings. The instrument protocol describes the fields.
 
+For a budget-constrained run using copier paper, fixed-backing native M2
+measurements can support an empirical calibration without purchasing a certified
+white board. Record the actual paper stack and bare spectrum; M2 reduces
+UV-excited fluorescence but does not make the paper neutral or fluorescence-free.
+Use the same acquisition condition for coupons and both bare backings. Keep
+M0/M1 and simulated conditions separate, and do not subtract the backing Lab or
+force it to an ideal white. Validate a different backing or illumination separately.
+
 ### Calibration artifacts
 
 Keep reproducible source, local experiments and published measurements separate:
 
 ```text
-tools/make_panchroma_calibration.py          # versioned generation logic
-templates/measurements-i1pro2-guide.txt      # versioned measurement protocol
-calibration/runs/<run-id>/                  # local, Git-ignored experiment files
-calibration/datasets/<dataset-id>/          # curated measured data, when available
+tools/make_panchroma_calibration.py             # versioned generation logic
+templates/measurements-i1pro2-guide.txt         # versioned English measurement protocol
+templates/measurements-i1pro2-guide.zh-CN.txt   # versioned Chinese measurement protocol
+calibration/runs/<run-id>/                     # local, Git-ignored experiment files
+calibration/datasets/<dataset-id>/             # curated measured data, when available
 ```
 
 The generator requires a new output directory and never refreshes an existing

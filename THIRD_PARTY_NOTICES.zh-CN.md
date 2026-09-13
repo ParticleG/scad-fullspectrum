@@ -1,13 +1,14 @@
-# Third-party notices
+# 第三方声明
 
-English | [简体中文](THIRD_PARTY_NOTICES.zh-CN.md)
+[English](THIRD_PARTY_NOTICES.md) | 简体中文
 
-## FilamentMixerModel (pigment mix polynomial)
+## FilamentMixerModel（颜料混色多项式）
 
-`scad_fullspectrum/_pigment_model.py` is generated from `FilamentMixerModel.hpp`,
-the pigment-mix polynomial the slicers (OrcaSlicer, BambuStudio, Snapmaker Orca)
-use to draw filament-mix previews. It ships in those projects under the MIT
-licence:
+`scad_fullspectrum/_pigment_model.py` 由 `FilamentMixerModel.hpp` 生成。
+其中的颜料混色多项式被 OrcaSlicer、BambuStudio 和 Snapmaker Orca 等切片软件用于绘制耗材混色预览，
+在这些项目中按 MIT 许可证分发。
+
+以下版权声明与许可文本保留英文原文；中文说明不替代或修改这些许可条款。
 
 ```
 FilamentMixer — Header-only C++ pigment color mixer
@@ -33,4 +34,4 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-Regenerate the table with `tools/export_pigment_model.py <path/to/FilamentMixerModel.hpp>`.
+使用 `tools/export_pigment_model.py <path/to/FilamentMixerModel.hpp>` 重新生成数据表。
