@@ -252,21 +252,19 @@ Translucent filaments filter light instead of covering it, so the opaque mental
 model ("average the colours") does not apply. What this tool can and cannot tell
 you:
 
-* It can order recipes and show which direction a stack shifts the hue.
+* It can rank recipes under the selected approximation.
 * It cannot predict the printed colour: no absorption spectra, no reference
   thickness, no substrate and no illumination model. `mix.model:
   "transmission"` is experimental - calibrate it with printed swatches.
 
 Calibrate, in the viewing mode the part is for:
 
-1. **Reflective viewing** (lit from the viewer's side): print each *pure*
-   filament as a patch of a few layers (3-5, at your working layer height) over
-   the same backing the part will have, read the patches with a colorimeter or a
-   locked-off camera, and put those hex values into `base_filaments`. Then print
-   a small grid of *mixture* swatches - each patch a stack with the recipe the
-   tool reports (`--report` lists them) - at the same thickness and backing, and
-   compare. Adjust `mix.step`/`mix.components` and the spool hexes until the tool
-   agrees with the grid.
+1. **Reflective viewing** (lit from the viewer's side): measure pure and mixed
+   patches at the intended thickness, with the same backing, lighting and
+   viewing face. Keep recipe assignments fixed during calibration and reserve
+   separate recipes for validation. Display HEX values alone do not identify
+   absorption or scattering; changing `mix.step` or `mix.components` changes
+   the search space, not the physical model.
 2. **Transmissive / backlit viewing** (thin walls, lampshades, diffusers - a
    documented use of translucent PLA): the part is judged by the light passing
    through it, so calibrate against backlight, not against a backer. Print the
@@ -275,16 +273,83 @@ Calibrate, in the viewing mode the part is for:
 
 Practical notes that hold in both modes:
 
-* The colour comes from the *stack*: alternating thin layers (0.08-0.12 mm) of
-  different filaments behave like a single filter, which is the same mechanism
-  the FullSpectrum cadence uses.
-* Grey is a neutral-density filter - it darkens and desaturates. Keep it out of
-  saturated mixes; if you mostly print bright or pastel reflective pieces, an
-  opaque white spool is worth a slot (it also serves as a backer). Swapping is a
-  choice, not a rule.
-* Colour deepens with total thickness; thicker shells and more layers saturate.
+* Thin interleaved layers can combine spectral filtering, scattering and spatial
+  averaging. Layer order, surface orientation and viewing distance matter.
+* A grey spool is not necessarily a spectrally neutral filter. An opaque white
+  spool or backing changes the optical system and requires separate calibration.
+* Thickness can change hue, lightness and chroma; do not assume that saturation
+  always increases.
 * Purge/prime towers and travel moves leave translucent smears more visibly than
   opaque ones - keep wiping parameters generous.
+
+### Panchroma CMYN calibration kit
+
+Generate exact-recipe test projects without calling the colour solver:
+
+```sh
+python3 tools/make_panchroma_calibration.py /tmp/panchroma-calibration
+```
+
+The output directory must not already exist. Slots are **1=Cyan, 2=Magenta,
+3=Yellow, 4=Grey (N)**, not black. The script uses the bundled Snapmaker U1
+0.4 mm printer template. Its vendor HEX/TD metadata comes from
+[Polymaker's table](https://wiki.polymaker.com/polymaker-products/more-about-our-products/hex-codes-and-transmission-distances);
+these values are neither transmittance spectra nor measured mixture colours.
+
+[Snapmaker's colour reference](https://wiki.snapmaker.com/en/snapmaker_orca/full_spectrum_color_reference)
+also supplies 39 photographed recipes and a downloadable 177-colour project.
+It is a visual reference, not a numeric mixture-measurement dataset. Its
+[filament TD table](https://s3.us-west-2.amazonaws.com/snapmaker.com/download/manual/PLA+Full+Spectrum+Filament+Bundle+Hex+Code+%26+TD+Value+Table.pdf)
+uses the same HEX values but lists C/M/Y/Gray TD as 5.5/5.5/9.5/6.5, versus
+Polymaker's 8/7.8/14/11.5. Matching HEX does not establish optical equivalence
+between those products or batches; do not substitute either calibration blindly.
+
+| Projects | Coupons | Purpose |
+| --- | --- | --- |
+| `thickness-cyan`, `thickness-magenta`, `thickness-yellow`, `thickness-grey` | 11 per spool | Pure-material thickness response from 0.16 to 15.36 mm |
+| `mix-fit` | 35 recipes + 2 repeatability controls | Complete 25% composition grid across 1-4 components, at 3.2 mm thickness |
+| `mix-holdout` | 20 | Separate two-, three- and four-component recipes, excluded from fitting |
+| `layer-order` | 6 | Equal-ratio stacks with reversed block order or interleaving; physical slots, not virtual mixes |
+
+Open the **3MF** files as projects. SCAD files are geometry references and cannot
+preserve the explicit virtual recipes through the normal colour-solving CLI.
+SVG maps identify the coupons from above, with the front at the bottom and a
+clipped front-left corner on each coupon. Labels are **not printed**: photograph
+the plate before removal and transfer IDs to containers or non-measurement edges.
+`samples.csv` records ratios and layout; `measurements.csv` is deliberately blank
+apart from IDs and viewing modes. `manifest.json` records the intended process
+and source metadata, not measured results.
+
+**Before printing:** verify the actual printer, loaded slot order and material
+temperatures. The calibration process explicitly sets 0.08 mm layers, a 0.16 mm
+first layer, 100% rectilinear infill, no ironing and no support. Keep these
+conditions fixed across calibration and validation. Check the wipe tower
+clearance and inspect the sliced tool assignments, especially the thin coupons.
+The virtual percentages are requests to the slicer, not measured extrusion
+fractions; retain G-code and note layer rounding and first-layer effects.
+The layer-order controls use 0.16 mm material blocks: normally two 0.08 mm layers,
+except the first block, which is one 0.16 mm first layer. No permanent backing
+or label geometry crosses the central measurement area.
+
+**Measurement:** use the central 10 x 10 mm of each 20 x 20 mm coupon. Measure
+actual thickness without crushing thin samples. Record spool batch, print run,
+face, rotation and lighting. Keep white-backed reflection, black-backed
+reflection and backlit transmission as separate datasets. Reposition and repeat
+each reading at least three times; reprint selected controls to separate capture
+repeatability from printer repeatability. For photography, use RAW where
+available, fixed exposure/white balance, a colour reference, uniform lighting
+and an unclipped central region. Camera RGB without colour calibration is not
+an absolute Lab measurement, and camera channels cannot recover a full spectrum.
+A spectrophotometer with transmission capability is needed for spectral
+transmittance; scattering samples require attention to total versus direct
+transmission and measurement aperture.
+
+Start with measured-recipe nearest-neighbour matching or interpolation within
+the measured composition grid. Keep `mix-holdout` out of model fitting and report
+its error separately. This kit primarily characterizes flat, top-viewed patches;
+other thicknesses, sidewalls, backing materials and layer sequences require
+their own validation. It does not install a calibrated colour model in the CLI.
+
 ## Caveats
 
 * Alpha in `color([r, g, b, a])` is ignored - the printer is opaque.
