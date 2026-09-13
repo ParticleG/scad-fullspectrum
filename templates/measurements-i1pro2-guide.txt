@@ -1,0 +1,159 @@
+PANCHROMA CMYN / X-RITE i1Pro 2 RECORDING SHEET
+
+Files and status
+----------------
+measurements-i1pro2.csv is a new, unmeasured reflection template.
+The original measurements.csv is a general-purpose template for instrument or
+camera measurements. Its Lab and spectral_file columns already support a
+spectrophotometer; its RGB and capture_file columns support camera workflows.
+Neither CSV contains or decodes RAW image data. This new file does not replace,
+merge with, or automatically synchronize the original file.
+
+Each sample has two backing modes and three planned repeats. White-backed
+readings come first, followed by black-backed readings.
+There is no backlit transmission section: a separate setup and protocol are
+needed; reflection measurements must not be labeled as transmission.
+
+CSV format: UTF-8, comma delimiter, dot decimal separator. Blank measurement
+cells mean not measured, NOT zero. Preserve header names and identifiers.
+Do not convert the reference percentages to spreadsheet percentage formatting:
+25 means 25 percent, not 0.25. Scientific values may be negative for a_star/b_star.
+
+Prefilled values
+----------------
+reading_id is unique, for example TC01-W-01 (white backing, first planned read)
+or TC01-B-01 (black backing, first planned read).
+sample_id, plate, role, design_thickness_mm and C/M/Y/N_percent are copied from
+samples.csv. They describe the generated design, NOT observed extrusion ratios
+or measured thickness. N is Grey, not Black. Keep samples.csv available for the
+full layout and explicit layer sequence.
+
+face=top, rotation_degrees=0, illuminant=D50, observer=1931_2 and
+instrument=X-Rite i1Pro 2 are PROTOCOL DEFAULTS, not evidence of actual setup.
+Check and change them to match each reading. In this protocol, top means the
+printed +Z face; bottom means the build-plate face. Zero rotation is the chosen
+reference orientation with the clipped corner used to reproduce placement.
+The repeat column reserves three reads; it does not assert that any were taken.
+
+measurement_condition is deliberately blank. D50/1931_2 describes the
+colorimetric computation, not an automatic claim of native M1 measurement.
+Record the actual acquisition condition and any simulation/FWA compensation.
+ArgyllCMS documents that its i1Pro 2 driver does not use the device UV mode;
+do not label a software simulation as a native M1 or M2 measurement.
+
+Fill once per setup, then copy to all applicable rows
+---------------------------------------------------
+print_run: identify the actual print job, for example a date plus plate ID.
+measurement_session: a unique name for one instrument calibration/setup session.
+measurement_condition: actual M condition and any compensation, when known.
+backing_id: identify the actual white or black backing; do not combine materials.
+software: application and version used to acquire/export the data.
+instrument_serial: the serial number of the instrument actually used.
+illuminant / observer: confirm that these match the exported Lab computation.
+Use notes for calibration time, changed settings, uncertainty and anomalies.
+Retain the matching G-code/process settings and spool batch records with each
+print_run. Start a new measurement_session after changing acquisition conditions.
+
+Fill for each reading
+---------------------
+L_star, a_star, b_star: the measured Lab values, as three numeric cells.
+Keep the instrument/software precision; do not invent additional digits.
+If a reading fails or was not taken, leave all three blank and explain in notes.
+
+spectral_file: path to the exported spectrum for this particular reading,
+relative to this directory or absolute. Leave blank until the file actually
+exists. A useful filename convention is spectra/TC01-W-01.sp, provided that the
+software exports that format. Other native spectral formats are also acceptable.
+Do not rename an incompatible file merely to give it a .sp extension.
+Exporting Lab alone does not preserve the spectrum. Preserve wavelength labels,
+units and original spectral files; the CSV stores references, not spectral bins.
+
+actual_thickness_mm: independently measured sample thickness, not the design
+value. Measure without crushing thin samples. If one thickness determination is
+reused for repeated optical reads, copying it is acceptable; note that it was
+one thickness measurement rather than three independent measurements.
+
+face / rotation_degrees: verify the actual viewed face and orientation.
+measured_at: record the acquisition time if available, preferably ISO 8601 with
+time zone, or preserve it in the associated instrument export/session record.
+notes: bubbles, contamination, warping, repositioning problems, rejected reads,
+or anything needed to interpret the data. Do not silently remove outliers.
+
+Measurement procedure
+---------------------
+1. Calibrate the instrument with its original calibration base as instructed by
+   the software. A sample backing is not the instrument calibration white tile.
+2. Set the intended software measurement mode. Confirm the Lab illuminant and
+   observer. Keep the sample/backing contact and instrument geometry consistent.
+3. Start with white-backed reflection. Use spot measurements in the central
+   area of each 20 x 20 mm coupon, away from clipped corners, walls and seams.
+4. Take repeat 1, lift/reposition the instrument, and take repeats 2 and 3 at the
+   same nominal orientation and central region. Do not enter one measurement
+   into all three repeat rows.
+5. Measure black-backed reflection as a separate group when required. It is not
+   necessary to complete both modes before analyzing the white-backed pilot.
+6. For a rotation or opposite-face experiment, append new rows with unique
+   reading_id values and the actual orientation/face. Do not overwrite the
+   original repetitions. For a reprint, use a different print_run and reading_id.
+7. Save the raw readings before averaging. Compute separate summaries for each
+   sample, backing, face, orientation and comparable measurement condition.
+
+Backing definitions and bare-backing readings
+--------------------------------------------
+backings.csv identifies the physical backings. The generated IDs WB01 (white)
+and BB01 (black) are protocol defaults, not certified reference materials.
+Fill material, brand/source, batch, sheet count, thickness, surface finish,
+used face and underlay as applicable. Leave unknown properties blank.
+Changing the material, paper stack, used face or underlay requires a new
+backing_id; do not redefine an ID already associated with real readings.
+
+measurements-i1pro2.csv links each coupon reading to backings.csv by backing_id.
+Confirm the prefilled ID against the backing actually used before recording.
+Neither backing_id nor measurement_session is an automatically verified value.
+
+backing-references-i1pro2.csv contains only measurements of bare backings,
+without a coupon. It reserves 12 reads for one session: each of two backings
+at session_phase=start and end, with three repositioned repeats each.
+Lab remains in columns E/F/G. Spectra and actual acquisition conditions remain
+blank until measured/exported; use the same instrument and colorimetric settings
+as for the coupon readings. These are not calibration-tile or dark-current reads.
+
+Fill measurement_session with the same session ID used for the corresponding
+coupon readings. Join using BOTH backing_id and measurement_session, and compare
+only matching measurement_condition, illuminant, observer and instrument setup.
+The prefilled position=reference and rotation_degrees=0 are placement defaults:
+identify a repeatable physical region and record the actual placement.
+Keep the backing stack, underlay and instrument-to-surface distance consistent.
+
+Take the start controls after instrument calibration and before the coupons;
+take the end controls after the coupon readings. Repeat rows require independent
+repositioned measurements, not copied values. Preserve outliers with explanatory
+notes. Export individual spectra or, for a multi-reading export, record each
+row's original export SampleID in notes as well as the shared spectral_file.
+
+For another session, append rows with a new measurement_session and unique
+reading_id values, for example S02-WB01-START-01. Do not overwrite the first
+session's controls or reuse its identifiers. Additional positions can be
+recorded using session_phase=uniformity_check and distinct position labels and
+reading IDs; do not average different positions into the reference controls.
+
+Keep backing controls out of samples.csv, recipe fitting and holdout evaluation.
+Do not assign filament percentages or treat them as zero-thickness coupons.
+Use their spectra to assess backing color, uniformity and session stability.
+Do not subtract backing Lab from coupon Lab or assume direct spectral subtraction
+isolates the filament: reflection includes filtering, scattering and multiple
+reflections. A defined optical model is needed for such an inversion.
+
+Analysis boundaries
+-------------------
+Do not pool white- and black-backed readings, or reflective and backlit data.
+Use mix-fit for fitting and keep mix-holdout out of model fitting and tuning.
+Repeated reads of one coupon assess capture repeatability; duplicate printed
+coupons and independent reprints assess different sources of variation.
+A measured reflection spectrum includes the sample, backing and measurement
+geometry. It is not an intrinsic absorption or total-transmission spectrum.
+
+References
+----------
+https://www.argyllcms.com/doc/spotread.html
+https://www.argyllcms.com/doc/instruments.html#i1p2

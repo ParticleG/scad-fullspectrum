@@ -3,3 +3,6 @@ __pycache__/
 *.3mf
 *.stl
 *.csg
+
+# Local calibration runs include raw measurements and generated artifacts.
+/calibration/runs/

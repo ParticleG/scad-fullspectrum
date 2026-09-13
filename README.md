@@ -1,5 +1,7 @@
 # scad-fullspectrum
 
+English | [简体中文](README.zh-CN.md)
+
 Turn a coloured OpenSCAD file into a **Snapmaker Orca / FullSpectrum project 3MF**
 in which every `color()` scope is printed as a blend of the filaments loaded in
 the four toolheads.
@@ -287,7 +289,7 @@ Practical notes that hold in both modes:
 Generate exact-recipe test projects without calling the colour solver:
 
 ```sh
-python3 tools/make_panchroma_calibration.py /tmp/panchroma-calibration
+python3 tools/make_panchroma_calibration.py calibration/runs/new-run
 ```
 
 The output directory must not already exist. Slots are **1=Cyan, 2=Magenta,
@@ -316,9 +318,12 @@ preserve the explicit virtual recipes through the normal colour-solving CLI.
 SVG maps identify the coupons from above, with the front at the bottom and a
 clipped front-left corner on each coupon. Labels are **not printed**: photograph
 the plate before removal and transfer IDs to containers or non-measurement edges.
-`samples.csv` records ratios and layout; `measurements.csv` is deliberately blank
-apart from IDs and viewing modes. `manifest.json` records the intended process
-and source metadata, not measured results.
+`samples.csv` records ratios and layout. The general-purpose `measurements.csv`
+supports instrument readings and camera-derived results; it is deliberately
+blank apart from IDs and viewing modes. Neither it nor the instrument-specific
+sheet below reads RAW images or imports measurements automatically.
+`manifest.json` records the intended process and source metadata, not measured
+results.
 
 **Before printing:** verify the actual printer, loaded slot order and material
 temperatures. The calibration process explicitly sets 0.08 mm layers, a 0.16 mm
@@ -349,6 +354,100 @@ the measured composition grid. Keep `mix-holdout` out of model fitting and repor
 its error separately. This kit primarily characterizes flat, top-viewed patches;
 other thicknesses, sidewalls, backing materials and layer sequences require
 their own validation. It does not install a calibrated colour model in the CLI.
+
+#### i1Pro 2 recording protocol
+
+Every generation also writes `measurements-i1pro2.csv`, `backings.csv`,
+`backing-references-i1pro2.csv` and `measurements-i1pro2-guide.txt`.
+The guide is copied from the versioned
+[instrument protocol template](templates/measurements-i1pro2-guide.txt); edit
+that source rather than a generated copy when improving the shared workflow.
+
+For the current 107 coupons, the instrument sheet reserves 642 readings:
+white-backed reflection first, then black-backed reflection, with three
+repositioned reads per coupon and backing. Each `reading_id` is unique, for
+example `TC01-W-01`. It includes design metadata for cross-checking, not measured
+extrusion fractions. The general and instrument sheets do not synchronize;
+choose the instrument sheet for this workflow rather than entering results twice.
+
+* Enter the actual `L_star`, `a_star` and `b_star` values. Preserve signed values
+  and acquisition precision. Blank means unmeasured, not zero.
+* Set `spectral_file` only after exporting that reading's spectrum. Keep the
+  original wavelength labels and units; recording Lab alone loses the spectrum.
+* Confirm the prefilled D50 / CIE 1931 2-degree observer, top face and 0-degree
+  rotation against the actual setup. These are protocol defaults, not observations.
+* Record actual thickness, print run, measurement session, backing, acquisition
+  software/version, instrument identity and measurement condition. Do not copy
+  the design thickness into a field intended for a physical measurement.
+* `measurement_condition` is intentionally blank. D50 in the Lab computation
+  does not imply native M1 acquisition. ArgyllCMS documents that its i1Pro 2
+  driver does not use the device UV mode; identify any simulation or FWA
+  compensation rather than reporting it as a native hardware condition.
+
+Use the original calibration base for instrument calibration and a separate,
+identified sample backing. Use spot measurements in the central area, with
+stable support and repeatable instrument placement. Do not compress thin samples
+or scan across coupons of different heights. Save individual readings before
+averaging; orientation changes and reprints need separate, uniquely identified
+readings. Reflection spectra include the sample/backing/geometry combination;
+this is not a measurement of intrinsic absorption or total transmission.
+Backlit measurements require a separate protocol and are not in this sheet.
+
+**Bare-backing controls:** `backings.csv` records each backing's material, batch,
+paper stack, thickness, finish, used face and underlay. WB01 and BB01 are default
+white/black identities, not certified optical standards. The coupon sheet
+prefills these IDs; confirm the actual setup and use a new ID when it changes.
+`backing-references-i1pro2.csv` separately reserves 12 unmeasured controls:
+two backings x start/end of one session x three repeats. Fill the same
+`measurement_session` in coupon and control rows; match both session and
+`backing_id`, as well as acquisition and colorimetric conditions.
+
+The control sheet has no coupon IDs or filament percentages. Keep it out of
+recipe fitting and holdout evaluation, and do not subtract backing Lab from
+coupon Lab. Preserve individual spectra and placement information. Append
+uniquely identified controls for further sessions or uniformity checks instead
+of replacing previous readings. The instrument protocol describes the fields.
+
+### Calibration artifacts
+
+Keep reproducible source, local experiments and published measurements separate:
+
+```text
+tools/make_panchroma_calibration.py          # versioned generation logic
+templates/measurements-i1pro2-guide.txt      # versioned measurement protocol
+calibration/runs/<run-id>/                  # local, Git-ignored experiment files
+calibration/datasets/<dataset-id>/          # curated measured data, when available
+```
+
+The generator requires a new output directory and never refreshes an existing
+run in place. Archive an existing experiment by copying its entire directory
+into a new `calibration/runs/<run-id>/`, retaining the original until the copy is
+verified. Preserve manual projects such as `thickness-cmyn.3mf`; that file is not
+an output of the current generator. A regenerated project is not a substitute
+for the actual project or G-code used to print a measured sample.
+
+Keep run-specific models, layouts, screenshots, raw captures, settings,
+measurement exports and verification records together. Copies do not
+synchronize: choose one working copy for subsequent readings. A copy checksum
+or historical verification report describes that snapshot, not future edits,
+physical colour accuracy or a new generator version. Git-ignored runs are not
+backed up by Git; retain separate backups.
+
+Create a dataset directory only after real measurements are available. Promote
+the selected readings together with their original spectra, exact `samples.csv`
+mapping, run manifest, actual print/measurement conditions and spool batches.
+Record the generator/template revision when known, and retain the exact printed
+project and G-code in the associated archive; do not guess missing provenance or
+rebuild historical mappings with the current generator. Keep holdout labels and
+raw individual readings so validation remains independent and repeatability
+can be assessed.
+
+Review dataset paths, instrument serial numbers and third-party redistribution
+rights before publication. Include only the relevant measured data and
+provenance, not an entire working directory. Large photographs and printable
+project bundles can remain in separately archived or release assets. Empty
+recording sheets are generated outputs, not measurement datasets. CSV and JSON
+are not globally ignored, so curated datasets can be versioned normally.
 
 ## Caveats
 

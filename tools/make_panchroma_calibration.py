@@ -6,7 +6,8 @@
 Open the 3MF projects in Snapmaker Orca / FullSpectrum, not the generated SCAD
 geometry references. Recipes bypass the colour solver. Display HEX and TD values
 are vendor metadata, not measured transmission spectra or predicted patch colours.
-See README.md for printing and measurement precautions.
+General and i1Pro 2 recording sheets are generated with an instrument guide.
+See README.md for printing, measurement and experiment archival precautions.
 """
 
 from __future__ import annotations
@@ -60,6 +61,10 @@ PROCESS = {
     "wipe_tower_x": ["235"],
     "wipe_tower_y": ["225"],
 }
+BACKINGS = (
+    ("WB01", "white", "W"),
+    ("BB01", "black", "B"),
+)
 
 
 @dataclass(frozen=True)
@@ -213,11 +218,74 @@ def write_plate(output: Path, name: str, coupons: list[Coupon], template: dict) 
     return records
 
 
+def _write_i1pro2_sheet(output: Path, records: list[dict]) -> None:
+    fields = [
+        "reading_id", "sample_id", "mode", "repeat", "L_star", "a_star", "b_star",
+        "spectral_file", "actual_thickness_mm", "face", "rotation_degrees",
+        "print_run", "measurement_session", "measurement_condition", "illuminant",
+        "observer", "backing_id", "instrument", "software", "instrument_serial",
+        "measured_at", "plate", "role", "design_thickness_mm",
+        "C_percent", "M_percent", "Y_percent", "N_percent", "notes",
+    ]
+    reference_fields = [
+        "sample_id", "plate", "role", "design_thickness_mm",
+        "C_percent", "M_percent", "Y_percent", "N_percent",
+    ]
+    with (output / "measurements-i1pro2.csv").open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=fields, lineterminator="\n")
+        writer.writeheader()
+        for backing_id, backing_type, code in BACKINGS:
+            for record in records:
+                row = {field: record[field] for field in reference_fields}
+                row.update({
+                    "mode": f"{backing_type}_backing_reflection", "backing_id": backing_id,
+                    "face": "top", "rotation_degrees": 0,
+                    "illuminant": "D50", "observer": "1931_2", "instrument": "X-Rite i1Pro 2",
+                })
+                for repeat in range(1, 4):
+                    row["reading_id"] = f"{record['sample_id']}-{code}-{repeat:02d}"
+                    row["repeat"] = repeat
+                    writer.writerow(row)
+
+
+def _write_backing_sheets(output: Path) -> None:
+    fields = [
+        "backing_id", "backing_type", "material", "brand_or_source", "batch_or_lot",
+        "sheet_count", "thickness_mm", "surface_finish", "used_face", "underlay", "notes",
+    ]
+    with (output / "backings.csv").open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=fields, lineterminator="\n")
+        writer.writeheader()
+        for backing_id, backing_type, _ in BACKINGS:
+            writer.writerow({"backing_id": backing_id, "backing_type": backing_type})
+
+    fields = [
+        "reading_id", "backing_id", "session_phase", "repeat",
+        "L_star", "a_star", "b_star", "spectral_file", "measurement_session",
+        "position", "rotation_degrees", "measurement_condition", "illuminant",
+        "observer", "instrument", "software", "instrument_serial", "measured_at", "notes",
+    ]
+    with (output / "backing-references-i1pro2.csv").open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=fields, lineterminator="\n")
+        writer.writeheader()
+        for backing_id, _, _ in BACKINGS:
+            for phase in ("start", "end"):
+                for repeat in range(1, 4):
+                    writer.writerow({
+                        "reading_id": f"{backing_id}-{phase.upper()}-{repeat:02d}",
+                        "backing_id": backing_id, "session_phase": phase, "repeat": repeat,
+                        "position": "reference", "rotation_degrees": 0,
+                        "illuminant": "D50", "observer": "1931_2", "instrument": "X-Rite i1Pro 2",
+                    })
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path, help="new output directory; existing paths are refused")
     args = parser.parse_args(argv)
     template = load_settings_template(None)
+    guide_path = Path(__file__).resolve().parents[1] / "templates" / "measurements-i1pro2-guide.txt"
+    guide = guide_path.read_text(encoding="utf-8")
     try:
         args.output.mkdir(parents=True, exist_ok=False)
     except FileExistsError:
@@ -242,6 +310,9 @@ def main(argv: list[str] | None = None) -> int:
         for record in records:
             for mode in ("white_backing_reflection", "black_backing_reflection", "backlit_transmission"):
                 writer.writerow({"sample_id": record["sample_id"], "mode": mode})
+    _write_i1pro2_sheet(args.output, records)
+    _write_backing_sheets(args.output)
+    (args.output / "measurements-i1pro2-guide.txt").write_text(guide, encoding="utf-8")
     manifest = {
         "measurement_status": "unmeasured; blank CSV fields are for actual observations",
         "sources": SOURCES,
@@ -264,6 +335,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Created {len(plates)} projects with {len(records)} unmeasured coupons in {args.output}")
     print("Physical slots: 1=Cyan, 2=Magenta, 3=Yellow, 4=Grey (N), not Black.")
     print("Open the 3MF files; SCAD and SVG are geometry/layout references, not colour predictions.")
+    print("i1Pro 2: measurements-i1pro2.csv; protocol: measurements-i1pro2-guide.txt.")
+    print("Backing controls: backings.csv; bare readings: backing-references-i1pro2.csv.")
     return 0
 
 
